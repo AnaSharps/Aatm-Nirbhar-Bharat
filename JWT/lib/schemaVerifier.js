@@ -57,6 +57,10 @@ const schemaDefinations = {
     user: { type: 'string', maxLength: 50, regex: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g },
     vacancyId: { type: 'string', maxLength: 40 },
   },
+  viewJobDetail: {
+    user: { type: 'string', maxLength: 50, regex: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g },
+    vacancyId: { type: 'string', maxLength: 40 },
+  },
   withdrawJob: {
     user: { type: 'string', maxLength: 50, regex: /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/g },
     vacancyId: { type: 'string', maxLength: 40 },

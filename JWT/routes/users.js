@@ -1,3 +1,4 @@
+/* eslint-disable no-else-return */
 /* eslint-disable linebreak-style */
 /* eslint-disable max-len */
 /* eslint-disable linebreak-style */
@@ -104,8 +105,7 @@ module.exports = (dbConnection) => {
         if (applicant.length > 0) {
           console.log('applied already');
           return res.status(200).json({ success: false, msg: 'You have already applied for this job' });
-        }
-        if (applicant.length === 0) {
+        } else if (applicant.length === 0) {
           dbConnection.query('SELECT vac_skills.skills FROM vac_skills JOIN lab_skills ON lab_skills.skills = vac_skills.skills WHERE vac_skills.vac_id = ?', [req.body.vacancyId], (err, vacSkills) => {
             console.log(req.body);
             if (err) next(err);
@@ -130,7 +130,7 @@ module.exports = (dbConnection) => {
           });
         }
       });
-    } return res.status(401).json({ success: false, msg: 'Malformed Request' });
+    } else return res.status(401).json({ success: false, msg: 'Malformed Request' });
   });
 
   router.post('/withdrawJob', passport.authenticate('jwt', { session: false }), (req, res, next) => {
@@ -196,6 +196,76 @@ module.exports = (dbConnection) => {
     } else {
       console.log('schema incorrect');
       res.status(401).json({ success: false, msg: 'Malformed Request' });
+    }
+  });
+
+  router.post('/viewJobDetail', passport.authenticate('jwt', { session: false }), (req, res, next) => {
+    console.log(req.body);
+    if (verifySchema('viewJobDetail', req.body)) {
+      console.log('schema verified');
+      const vacId = req.body.vacancyId.split('-').join('_');
+      dbConnection.query('SHOW COLUMNS FROM Activity LIKE ?', [vacId], (err, exists) => {
+        if (err) next(err);
+        if (exists && exists.length > 0) {
+          console.log('already exists');
+          dbConnection.query(`SELECT ${vacId} FROM Activity WHERE user_email = ?`, [req.body.user], (err3, value) => {
+            console.log(value);
+            if (err3) next(err3);
+            if (value && value.length > 0) {
+              console.log(value);
+              console.log('incrementing value');
+              const currValue = value[0][vacId] + 1;
+              dbConnection.query(`UPDATE Activity SET ${vacId} = ? WHERE user_email = ?`, [currValue + 1, req.body.user], (err4, updated) => {
+                if (err4) next(err4);
+                if (updated) {
+                  console.log('sending update response');
+                  return res.status(200).json({ success: true });
+                }
+              });
+            } else if (value && value.length === 0) {
+              dbConnection.query(`INSERT INTO Activity (user_email, ${vacId}) VALUES (?, ?)`, [req.body.user, 1], (err4, result) => {
+                if (err4) next(err4);
+                if (result) {
+                  console.log('user added');
+                  return res.status(200).json({ success: true });
+                }
+              });
+            }
+          });
+        } else {
+          console.log('new job found');
+          dbConnection.query(`ALTER TABLE Activity ADD COLUMN ${vacId} INT DEFAULT 0 NOT NULL`, (err2, success) => {
+            if (err2) next(err2);
+            if (success) {
+              console.log('new column created');
+              dbConnection.query(`SELECT ${vacId} FROM Activity WHERE user_email = ?`, [req.body.user], (err3, value) => {
+                if (err3) next(err3);
+                if (value && value.length > 0) {
+                  console.log('value incremented');
+                  dbConnection.query(`UPDATE Activity SET ${vacId} = ? WHERE user_email = ?`, [value[0][vacId] + 1, req.body.user], (err4, updated) => {
+                    if (err4) next(err4);
+                    if (updated) {
+                      console.log('sending new response');
+                      return res.status(200).json({ success: true });
+                    }
+                  });
+                } else if (value && value.length === 0) {
+                  dbConnection.query('INSERT INTO Activity (user_email, ?) VALUES (?, ?)', [vacId, req.body.user, 1], (err4, result) => {
+                    if (err4) next(err4);
+                    if (result) {
+                      console.log('user added');
+                      return res.status(200).json({ success: true });
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+      });
+    } else {
+      console.log('invalid schema');
+      return res.status(200).json({ success: false, msg: 'Malformed Request' });
     }
   });
 
@@ -587,6 +657,42 @@ module.exports = (dbConnection) => {
     }
   });
 
+  router.post('/updateMe', passport.authenticate('jwt', { session: false }), (req, res, next) => {
+    console.log(req.body);
+    if (verifySchema('addMember', req.body)) {
+      console.log('authorized request');
+      dbConnection.query('SELECT userType FROM user_accounts WHERE user_email = ?', [req.body.user], (er, userType) => {
+        if (er) next(er);
+        if (userType && userType.length > 0 && userType[0].userType === 'admin') {
+          console.log('valid request');
+          dbConnection.query(`SELECT user_email, username FROM user_accounts WHERE ( user_email='${req.body.emailM}' OR mobileNum='${req.body.mobileM}')`, (err, user) => {
+            console.log(user);
+            if (user[0]) return res.json({ success: false, msg: 'User already Exists!', user: user[0].usernameM });
+            utils.genPassword(req.body.passwordM).then((hash) => {
+              console.log(hash);
+              dbConnection.query('INSERT INTO user_accounts (username, hash, userType, mobileNum, details, user_email) VALUES (?, ?, ?, ?, ?, ?)', [req.body.usernameM, hash, req.body.userTypeM, req.body.mobileM, req.body.details, req.body.emailM], (error, User) => {
+                console.log(req.body);
+                console.log(req.body.userTypeM);
+                if (error) {
+                  console.log('error encountered!');
+                  next(error);
+                } else if (User) {
+                  console.log('sending res');
+                  return res.json({
+                    success: true,
+                  });
+                } else console.log('nothing here!');
+              });
+            }, () => console.log('error generating password'));
+          });
+        } else return res.status(200).json({ success: false, msg: 'Unauthorized Request' });
+      });
+    } else {
+      console.log('schema incorrect');
+      return res.status(401).json({ success: false, msg: 'Malformed Request!' });
+    }
+  });
+
   router.post('/login', (req, res, next) => {
     console.log(req.body);
     if (verifySchema('login', req.body)) {
@@ -645,42 +751,6 @@ module.exports = (dbConnection) => {
         }, () => console.log('error generating password'));
       });
     } else res.status(401).json({ success: false, msg: 'Malformed Request!' });
-  });
-
-  router.post('/addMember', (req, res, next) => {
-    console.log(req.body);
-    if (verifySchema('addMember', req.body)) {
-      console.log('authorized request');
-      dbConnection.query('SELECT userType FROM user_accounts WHERE user_email = ?', [req.body.user], (er, userType) => {
-        if (er) next(er);
-        if (userType && userType.length > 0 && userType[0].userType === 'admin') {
-          console.log('valid request');
-          dbConnection.query(`SELECT user_email, username FROM user_accounts WHERE ( user_email='${req.body.emailM}' OR mobileNum='${req.body.mobileM}')`, (err, user) => {
-            console.log(user);
-            if (user[0]) return res.json({ success: false, msg: 'User already Exists!', user: user[0].usernameM });
-            utils.genPassword(req.body.passwordM).then((hash) => {
-              console.log(hash);
-              dbConnection.query('INSERT INTO user_accounts (username, hash, userType, mobileNum, details, user_email) VALUES (?, ?, ?, ?, ?, ?)', [req.body.usernameM, hash, req.body.userTypeM, req.body.mobileM, req.body.details, req.body.emailM], (error, User) => {
-                console.log(req.body);
-                console.log(req.body.userTypeM);
-                if (error) {
-                  console.log('error encountered!');
-                  next(error);
-                } else if (User) {
-                  console.log('sending res');
-                  return res.json({
-                    success: true,
-                  });
-                } else console.log('nothing here!');
-              });
-            }, () => console.log('error generating password'));
-          });
-        } else return res.status(200).json({ success: false, msg: 'Unauthorized Request' });
-      });
-    } else {
-      console.log('schema incorrect');
-      return res.status(401).json({ success: false, msg: 'Malformed Request!' });
-    }
   });
 
   return router;

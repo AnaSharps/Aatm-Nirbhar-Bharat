@@ -3,7 +3,7 @@
 /* eslint-disable react/jsx-filename-extension */
 import React, { useContext } from 'react';
 import {
-  TextInput, Button, Text, Linking, View, SafeAreaView, TouchableOpacity
+  TextInput, Button, Text, Linking, View, SafeAreaView, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { ScreenContainer } from 'react-native-screens';
 import * as SecureStore from 'expo-secure-store';
@@ -22,7 +22,7 @@ export default class LabourLoggedIn extends React.Component {
       loading: true,
       vacanciesFound: [],
       vacanciesFoundNum: [],
-      error: null,
+      vacancyDetails: null,
     };
     this.applyForJob = this.applyForJob.bind(this);
   }
@@ -30,7 +30,7 @@ export default class LabourLoggedIn extends React.Component {
 
   componentDidMount() {
     const { route, navigation } = { ...this.props };
-    const { token, user } = route.params;
+    const { token, user, vacancyDetails } = route.params;
     const { signOut } = this.context;
     fetch(`${host}/users/viewJobsLabour`, {
       method: 'POST',
@@ -46,17 +46,15 @@ export default class LabourLoggedIn extends React.Component {
     }).then((res) => res.json()).then((json) => {
       if (json.success) {
         const vacancyNum = json.vacancyDetails.map(() => uuid.v4());
-        this.setState({ loading: false, vacanciesFoundNum: vacancyNum, vacanciesFound: json.vacancyDetails });
+        this.setState({ loading: false, vacanciesFoundNum: vacancyNum, vacanciesFound: json.vacancyDetails, vacancyDetails: vacancyDetails ? vacancyDetails : null });
       } else {
-        this.setState({ loading: false, vacanciesFound: json.vacancyDetails, error: 'No matching Jobs Found' });
+        this.setState({ loading: false, vacanciesFound: json.vacancyDetails, vacancyDetails: vacancyDetails ? vacancyDetails : null });
       }
     }, () => {
       SecureStore.deleteItemAsync('authToken');
       signOut({ error: 'Unauthorized User' });
     });
   }
-
-  componentWillReceiveProps
 
   // componentWillReceiveProps() {
   //   const { route, navigation } = { ...this.props };
@@ -86,7 +84,7 @@ export default class LabourLoggedIn extends React.Component {
   //   });
   // }
 
-  applyForJob(vacancyId) {
+  applyForJob(value) {
     const { route, navigation } = { ...this.props };
     const { token, user } = route.params;
     const { signOut } = this.context;
@@ -99,7 +97,7 @@ export default class LabourLoggedIn extends React.Component {
       },
       body: JSON.stringify({
         user,
-        vacancyId,
+        vacancyId: value.vac_id,
       }),
     }).then((res) => res.json()).then((json) => {
       if (json.success) {
@@ -141,7 +139,7 @@ export default class LabourLoggedIn extends React.Component {
     });
   }
 
-  withdrawApplicationHandler(vacancyId) {
+  withdrawApplicationHandler(value) {
     const { route, navigation } = { ...this.props };
     const { token, user } = route.params;
     const { signOut } = this.context;
@@ -154,10 +152,11 @@ export default class LabourLoggedIn extends React.Component {
       },
       body: JSON.stringify({
         user,
-        vacancyId,
+        vacancyId: value.vac_id,
       }),
     }).then((res) => res.json()).then((json) => {
       if (json.success) {
+        console.log('success');
         const authToken = SecureStore.getItemAsync('authToken');
         if (authToken) {
           authToken.then((res) => {
@@ -174,6 +173,7 @@ export default class LabourLoggedIn extends React.Component {
           });
         }
       } else {
+        console.log('success: false');
         const authToken = SecureStore.getItemAsync('authToken');
         if (authToken) {
           authToken.then((res) => {
@@ -196,13 +196,70 @@ export default class LabourLoggedIn extends React.Component {
     });
   }
 
+  viewJobDesc(value) {
+    const { vacanciesFound } = { ...this.state };
+    const { route, navigation } = { ...this.props };
+    const { token, user } = route.params;
+    const { signOut } = this.context;
+    fetch(`${host}/users/viewJobDetail`, {
+      method: 'POST',
+      headers: {
+        Authorization: token,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user,
+        vacancyId: value.vac_id,
+      }),
+    }).then((res) => res.json()).then((json) => {
+      if (json.success) {
+        const authToken = SecureStore.getItemAsync('authToken');
+        if (authToken) {
+          authToken.then((res) => {
+            const resObject = JSON.parse(res);
+            if (resObject && resObject.userType === 'admin') {
+              navigation.push('LabourLoggedIn', {
+                ...route.params, error: null, vacancyDetails: value,
+              });
+            } else {
+              navigation.push('Home', {
+                user, token, error: null, vacancyDetails: value,
+              });
+            } 
+          });
+        }
+      } else {
+        const authToken = SecureStore.getItemAsync('authToken');
+        if (authToken) {
+          authToken.then((res) => {
+            const resObject = JSON.parse(res);
+            if (resObject && resObject.userType === 'admin') {
+              navigation.push('LabourLoggedIn', {
+                ...route.params, error: json.msg, vacancyDetails: value,
+              });
+            } else {
+              navigation.push('Home', {
+                user, token, error: json.msg, vacancyDetails: value,
+              });
+            } 
+          });
+        }
+      }
+    }, () => {
+      SecureStore.deleteItemAsync('authToken');
+      signOut({ error: 'Unauthorized User' });
+    });
+  }
+
+
   render() {
     const { route, navigation } = { ...this.props };
     const {
-      user, userType, details, token, userDetails, skillList,
+      user, userType, details, token, userDetails, skillList, error,
     } = route.params;
     const {
-      loading, vacanciesFound, vacanciesFoundNum, error
+      loading, vacanciesFound, vacanciesFoundNum, vacancyDetails,
     } = { ...this.state };
     const { signOut } = this.context;
     return (
@@ -223,23 +280,26 @@ export default class LabourLoggedIn extends React.Component {
         {/* {!loading && vacanciesFoundNum.length <=0 && vacanciesFound.length <=0 && (
           <Text> No vacancies found for your skills</Text>
         )} */}
-        {/* <ScrollView> */}
-        {!loading && vacanciesFoundNum && vacanciesFound && vacanciesFound.map((val, ind) => {
+        <ScrollView>
+        {!loading && !vacanciesFound && !vacancyDetails && (
+          <Text>No matching Jobs Found</Text>
+        )}
+        {!loading && vacanciesFoundNum && vacanciesFound && !vacancyDetails && vacanciesFound.map((val, ind) => {
           const {
             job_desc, vacancy, vac_name, village, city, state, skills, vac_id, applied,
           } = { ...val };
           return (
-            <View key={vacanciesFoundNum[ind]} style={styles.vacancyCard}>
+            <View key={vacanciesFound.vac_id} style={styles.vacancyCard}>
               <View style={{ borderBottomWidth: 1, marginVertical: 5, marginHorizontal: 10 }}>
                 <Text style={{ fontWeight: 'bold', fontSize: 22, opacity: 0.8, paddingHorizontal: 20 }}>{vac_name}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
                 <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>Description: </Text>
-                <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5 }}>{job_desc}</Text>
+                <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5, flexWrap: 'wrap', numberOfLines: 1 }}>{job_desc}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
                 <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>Skills Required: </Text>
-                <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5 }}>{skills.join(', ')}</Text>
+                <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5, flexWrap: 'wrap' }}>{skills.join(', ')}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
                 <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>No. of Vacancies: </Text>
@@ -247,41 +307,119 @@ export default class LabourLoggedIn extends React.Component {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
                 <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>Location: </Text>
-                <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5 }}>{village}, {city}, {state}</Text>
+                <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5, flexWrap: 'wrap' }}>{village}, {city}, {state}</Text>
               </View>
-                <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <TouchableOpacity
-                    disabled={applied ? true : false}
-                    onPress={() => {
-                      !applied ? this.applyForJob(vac_id) : null;
-                    }}
-                    styles={{ ...styles.button }}
+              <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    this.viewJobDesc(val);
+                  }}
+                  styles={{ ...styles.button }}
+                >
+                  <LinearGradient
+                    colors={['#08d4c4', '#01ab9d']}
+                    style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <LinearGradient
-                      colors={applied ? ['#999999', '#777777'] : ['#08d4c4', '#01ab9d']}
-                      style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text>{applied ? 'Applied' : 'Apply'}</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                  {applied && (
-                  <TouchableOpacity
-                    onPress={() => this.withdrawApplicationHandler(vac_id)}
-                    styles={{ ...styles.button }}
+                    <Text>View Details</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                {/* <TouchableOpacity
+                  disabled={applied ? true : false}
+                  onPress={() => {
+                    !applied ? this.applyForJob(vac_id) : null;
+                  }}
+                  styles={{ ...styles.button }}
+                >
+                  <LinearGradient
+                    colors={applied ? ['#999999', '#777777'] : ['#08d4c4', '#01ab9d']}
+                    style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <LinearGradient
-                      colors={['#08d4c4', '#01ab9d']}
-                      style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text>Withdraw Application</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-              )}
+                    <Text>{applied ? 'Applied' : 'Apply'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                {applied && (
+                <TouchableOpacity
+                  onPress={() => this.withdrawApplicationHandler(vac_id)}
+                  styles={{ ...styles.button }}
+                >
+                  <LinearGradient
+                    colors={['#08d4c4', '#01ab9d']}
+                    style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text>Withdraw Application</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                )} */}
               </View>
             </View>
           );
         })}
-        {/* </ScrollView> */}
+        {!loading && vacanciesFoundNum && vacanciesFound && vacancyDetails && (
+          <View key={vacancyDetails.vac_id} style={styles.vacancyCard}>
+            <View style={{ borderBottomWidth: 1, marginVertical: 5, marginHorizontal: 10 }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 22, opacity: 0.8, paddingHorizontal: 20 }}>{vacancyDetails.vac_name}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>Description: </Text>
+              <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5, flexWrap: 'wrap' }}>{vacancyDetails.job_desc}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>Skills Required: </Text>
+              <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5, flexWrap: 'wrap' }}>{vacancyDetails.skills.join(', ')}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>No. of Vacancies: </Text>
+              <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5 }}>{vacancyDetails.vacancy}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
+              <Text style={{ fontWeight: 'bold', fontSize: 18, opacity: 0.8, paddingHorizontal: 15 }}>Location: </Text>
+              <Text style={{ fontWeight: '200', fontSize: 15, paddingHorizontal: 5, flexWrap: 'wrap' }}>{vacancyDetails.village}, {vacancyDetails.city}, {vacancyDetails.state}</Text>
+            </View>
+              <View style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <TouchableOpacity
+                  onPress={() => {
+                    this.setState({ vacancyDetails: null });
+                  }}
+                  styles={{ ...styles.button }}
+                >
+                  <LinearGradient
+                    colors={['#08d4c4', '#01ab9d']}
+                    style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text>Back</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={vacancyDetails.applied ? true : false}
+                  onPress={() => {
+                    !vacancyDetails.applied ? this.applyForJob(vacancyDetails) : null;
+                  }}
+                  styles={{ ...styles.button }}
+                >
+                  <LinearGradient
+                    colors={vacancyDetails.applied ? ['#999999', '#777777'] : ['#08d4c4', '#01ab9d']}
+                    style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text>{vacanciesFound.applied ? 'Applied' : 'Apply'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                {vacancyDetails.applied && (
+                <TouchableOpacity
+                  onPress={() => this.withdrawApplicationHandler(vacancyDetails)}
+                  styles={{ ...styles.button }}
+                >
+                  <LinearGradient
+                    colors={['#08d4c4', '#01ab9d']}
+                    style={{ height: 30, borderRadius: 5, width: 150, borderColor: '#fff', borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text>Withdraw Application</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+            )}
+            </View>
+          </View>
+        )}
+        </ScrollView>
       </ScreenContainer>
     );
   }
