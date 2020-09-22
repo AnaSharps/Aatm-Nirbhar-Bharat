@@ -60,8 +60,15 @@ function getSimilarJobs(jobId, jobVec, jobList) {
   const jobScores = [];
 
   for (let i = 0; i < 10; i += 1) {
-    jobIds.push(jobList[])
+    jobIds.push(jobList[scores.indexOf(top10[i])]);
+    jobScores.push(top10[i]);
   }
+
+  const similarJobs = {
+    jobs: jobIds,
+    score: jobScores,
+  };
+  return similarJobs;
 }
 
 function getRecommendation(activities, vacId, userId) {

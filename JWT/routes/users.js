@@ -9,6 +9,8 @@ module.exports = (dbConnection) => {
   const utils = require('../lib/utils');
   const { v4: uuidv4 } = require('uuid');
   const util = require('util');
+  const fs = require('fs');
+  const path = require('path');
   const { verifySchema } = require('../lib/schemaVerifier');
   const query = util.promisify(dbConnection.query).bind(dbConnection);
 
@@ -46,7 +48,7 @@ module.exports = (dbConnection) => {
               }
             });
           } else {
-            console.log('not valid')
+            console.log('not valid');
             return (res.status(200).json({ success: false, msg: 'Unauthorized Request' }));
           }
         } else {
@@ -267,6 +269,30 @@ module.exports = (dbConnection) => {
       console.log('invalid schema');
       return res.status(200).json({ success: false, msg: 'Malformed Request' });
     }
+  });
+
+  router.get('/getActivityData', (req, res, next) => {
+    console.log('activity data requested');
+    dbConnection.query('SELECT * FROM Activity', (err, activity) => {
+      if (err) next(err);
+      if (activity) {
+        const rawData = {
+          user: [],
+          jobId: [],
+          views: [],
+        };
+        let data = 'user_email\tvac_id\tviews\n';
+        for (let i = 0; i < activity.length; i += 1) {
+          data += `${activity[i].user_email}\t${activity[i].vac_id}\t${activity[i].views}\n`;
+          rawData.user.push(activity[i].user_email);
+          rawData.jobId.push(activity[i].vac_id);
+          rawData.views.push(activity[i].views);
+        }
+        fs.writeFileSync(path.join('..', 'data', 'activities.tsv'), data);
+        console.log('printed');
+        res.json({ success: true, rawData: activity, data });
+      }
+    });
   });
 
   router.post('/searchVacancy', passport.authenticate('jwt', { session: false }), (req, res, next) => {
